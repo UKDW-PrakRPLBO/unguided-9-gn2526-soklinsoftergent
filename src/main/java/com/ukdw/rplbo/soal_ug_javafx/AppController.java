@@ -121,26 +121,101 @@ public class AppController {
 
     }
 
-    public void update_barchart(String target_col,String val) {
-        // TODO: buat barchart menampilkan seberapa banyak nilai A,A-,B+,...
-        // method ini dapat di gunakan di 2 situasi yaitu nilai berdasarkan nim mahasiswa dan berdasarkan kode matakuliah
-        // ambil data dari attribute nilai_table
-        // tips: target_col merujuk pada nama kolom di datbase sedangkan val adalah value yang di cari dari kolom tersebut misal:
-        // target_col -> nim, val -> 71200001, maka kita mencari 71200001 di kolom nim
+    public void update_barchart(String target_col, String val) {
+        // 1. Bersihkan data lama
+        barchart.getData().clear();
+        barchart.setAnimated(false); // Mematikan animasi agar update lebih stabil
+
+        // 2. Siapkan Series baru
+        XYChart.Series<String, Number> series = new XYChart.Series<>();
+        series.setName("Jumlah Nilai (" + val + ")");
+
+        // 3. Ambil data dari database berdasarkan target_col (nim atau kode_mk)
+        List<Nilai> daftarNilai = nilai_table.fetch_nilai_by(target_col, val);
+
+        // 4. Hitung frekuensi setiap grade (A, A-, B+, dst)
+        // Gunakan array penilaian yang sudah ada di Nilai_table untuk urutan yang konsisten
+        for (String grade : nilai_table.penilaian) {
+            long count = 0;
+            for (Nilai n : daftarNilai) {
+                if (n.getNilai().equals(grade)) {
+                    count++;
+                }
+            }
+            series.getData().add(new XYChart.Data<>(grade, count));
+        }
+
+        // 5. Masukkan ke barchart
+        barchart.getData().add(series);
     }
 
     public void update_linechart(String kode_mk) {
-        // TODO: buatlah linechart yang menggambarkan nilai mean dari setiap angkatan
-        // angkatan dapat di ambil dengan cara getAngkatan() pada entity Mahasiswa
-        // tips: fetch dulu entity mahasiswa menggunakan fetch_mahasiswa_by_nim() di mhs_tabel menggunakan nim pada nilai_table
+        // 1. Bersihkan data lama
+        linechart.getData().clear();
+        linechart.setAnimated(false);
 
+        XYChart.Series<String, Number> series = new XYChart.Series<>();
+        series.setName("Rata-rata Nilai per Angkatan");
+
+        // 2. Ambil semua nilai untuk mata kuliah ini
+        List<Nilai> daftarNilai = nilai_table.fetch_nilai_by_kode_mk(kode_mk);
+
+        // 3. Kelompokkan nilai berdasarkan angkatan mahasiswa
+        // Key: Angkatan (Integer), Value: List of scores (Double)
+        java.util.Map<Integer, List<Double>> mapAngkatan = new java.util.TreeMap<>();
+
+        for (Nilai n : daftarNilai) {
+            try {
+                // Ambil data mahasiswa untuk mendapatkan angkatannya
+                Mahasiswa m = mhs_table.fetch_mahasiswa_by_nim(n.getNIM());
+                if (m != null) {
+                    int angkatan = m.getAngkatan();
+                    mapAngkatan.putIfAbsent(angkatan, new ArrayList<>());
+                    mapAngkatan.get(angkatan).add(n.get_converted_nilai());
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        // 4. Hitung Mean (rata-rata) untuk setiap angkatan dan masukkan ke chart
+        for (java.util.Map.Entry<Integer, List<Double>> entry : mapAngkatan.entrySet()) {
+            List<Double> scores = entry.getValue();
+            double sum = 0;
+            for (Double s : scores) sum += s;
+            double mean = sum / scores.size();
+
+            series.getData().add(new XYChart.Data<>(entry.getKey().toString(), mean));
+        }
+
+        linechart.getData().add(series);
     }
 
     public void update_piechart(String target_col, String val) {
-       // TODO: tampilkan banyaknya nilai A,A-,B+,... dalam bentuk piechart
-        // method ini dapat di gunakan di 2 situasi yaitu nilai berdasarkan nim mahasiswa dan berdasarkan kode matakuliah
-        // ambil data dari attribute nilai_table
-        // tips: target_col merujuk pada nama kolom di datbase sedangkan val adalah value yang di cari dari kolom tersebut misal:
-        // target_col -> nim, val -> 71200001, maka kita mencari 71200001 di kolom nim
+        // 1. Bersihkan data lama
+        piechart.getData().clear();
+        piechart.setAnimated(false);
+
+        // 2. Ambil data dari database
+        List<Nilai> daftarNilai = nilai_table.fetch_nilai_by(target_col, val);
+
+        // 3. Hitung jumlah tiap grade dan masukkan jika jumlahnya > 0
+        ObservableList<PieChart.Data> pieData = FXCollections.observableArrayList();
+
+        for (String grade : nilai_table.penilaian) {
+            int count = 0;
+            for (Nilai n : daftarNilai) {
+                if (n.getNilai().equals(grade)) {
+                    count++;
+                }
+            }
+
+            if (count > 0) {
+                pieData.add(new PieChart.Data(grade + " (" + count + ")", count));
+            }
+        }
+
+        // 4. Set data ke piechart
+        piechart.setData(pieData);
     }
 }
